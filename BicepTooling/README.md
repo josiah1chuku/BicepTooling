@@ -22,3 +22,4 @@ dotnet test
 
 - C# / .NET 10
 - xUnit for testing
+# CI enabled
