@@ -1,5 +1,15 @@
-bin/
-obj/
+# Build output
+**/bin/
+**/obj/
+
+# Visual Studio
 *.user
 .vs/
 .claude/
+
+# OS files
+Thumbs.db
+.DS_Store
+
+# Generated output
+**/Samples/azuredeploy.json
