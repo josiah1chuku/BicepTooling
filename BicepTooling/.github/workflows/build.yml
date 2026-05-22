@@ -1,16 +1,18 @@
 name: Build and Test
-on: [push, pull_request]
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
 jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-dotnet@v4
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '10.0.x'
-      - name: Restore
-        run: dotnet restore BicepTooling/BicepTooling.Tests/BicepTooling.Tests.csproj
-      - name: Build
-        run: dotnet build BicepTooling/BicepTooling.Tests/BicepTooling.Tests.csproj
       - name: Test
-        run: dotnet test BicepTooling/BicepTooling.Tests/BicepTooling.Tests.csproj
+        run: dotnet test BicepTooling/BicepTooling.Tests/BicepTooling.Tests.csproj --verbosity normal
