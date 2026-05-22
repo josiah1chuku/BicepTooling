@@ -1,0 +1,14 @@
+C:\Users\chuku\BicepTooling\BicepTooling.Core\obj\Debug\net10.0\BicepTooling.Core.GeneratedMSBuildEditorConfig.editorconfig
+C:\Users\chuku\BicepTooling\BicepTooling.Core\obj\Debug\net10.0\BicepTooling.Core.AssemblyInfoInputs.cache
+C:\Users\chuku\BicepTooling\BicepTooling.Core\obj\Debug\net10.0\BicepTooling.Core.AssemblyInfo.cs
+C:\Users\chuku\BicepTooling\BicepTooling.Core\obj\Debug\net10.0\BicepTooling.Core.csproj.CoreCompileInputs.cache
+C:\Users\chuku\BicepTooling\BicepTooling.Core\bin\Debug\net10.0\BicepTooling.Core.exe
+C:\Users\chuku\BicepTooling\BicepTooling.Core\bin\Debug\net10.0\BicepTooling.Core.deps.json
+C:\Users\chuku\BicepTooling\BicepTooling.Core\bin\Debug\net10.0\BicepTooling.Core.runtimeconfig.json
+C:\Users\chuku\BicepTooling\BicepTooling.Core\bin\Debug\net10.0\BicepTooling.Core.dll
+C:\Users\chuku\BicepTooling\BicepTooling.Core\bin\Debug\net10.0\BicepTooling.Core.pdb
+C:\Users\chuku\BicepTooling\BicepTooling.Core\obj\Debug\net10.0\BicepTooling.Core.dll
+C:\Users\chuku\BicepTooling\BicepTooling.Core\obj\Debug\net10.0\refint\BicepTooling.Core.dll
+C:\Users\chuku\BicepTooling\BicepTooling.Core\obj\Debug\net10.0\BicepTooling.Core.pdb
+C:\Users\chuku\BicepTooling\BicepTooling.Core\obj\Debug\net10.0\BicepTooling.Core.genruntimeconfig.cache
+C:\Users\chuku\BicepTooling\BicepTooling.Core\obj\Debug\net10.0\ref\BicepTooling.Core.dll

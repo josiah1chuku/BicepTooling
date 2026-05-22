@@ -1,0 +1,4 @@
+<Solution>
+  <Project Path="BicepTooling.Core/BicepTooling.Core.csproj" />
+  <Project Path="BicepTooling.Tests/BicepTooling.Tests.csproj" />
+</Solution>

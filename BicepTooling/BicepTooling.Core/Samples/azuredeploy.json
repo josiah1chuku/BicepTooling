@@ -1,0 +1,32 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters":   {
+    "location":     {
+      "type": "string",
+      "defaultValue": "eastus"
+    },
+    "storageAccountName":     {
+      "type": "string"
+    }
+  },
+  "variables":   {
+    "storageSku": "Standard_LRS"
+  },
+  "resources":   [
+    {
+      "type": "Microsoft.Storage/storageAccounts",
+      "apiVersion": "2023-01-01",
+      "name": "[parameters('storageAccountName')]",
+      "location": "[parameters('location')]",
+      "sku": { "name": "[variables('storageSku')]" },
+      "kind": "StorageV2",
+    }
+  ],
+  "outputs":   {
+    "storageId":     {
+      "type": "string",
+      "value": "[reference('storageAccount').id]"
+    }
+  }
+}
