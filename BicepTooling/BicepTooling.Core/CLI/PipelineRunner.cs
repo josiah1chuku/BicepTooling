@@ -2,6 +2,7 @@ using System.Diagnostics;
 using BicepTooling.Parser;
 using BicepTooling.Semantic;
 using BicepTooling.CodeGen;
+using BicepTooling.Lexer;
 using BicepLexer  = BicepTooling.Lexer.Lexer;
 using BicepParser = BicepTooling.Parser.Parser;
 
@@ -16,14 +17,16 @@ public class PipelineRunner
         ConsoleUI.Banner($"Analyzing: {Path.GetFileName(resolved)}");
         Console.WriteLine();
 
-        var (ast, symbols, checker, linter) = RunPasses(source);
-
-        PrintDiagnostics(checker, linter);
-
-        var outPath = Path.ChangeExtension(resolved, ".json");
-        File.WriteAllText(outPath, new ArmGenerator().Generate(ast, symbols));
-        Console.WriteLine();
-        ConsoleUI.Success($"✓  ARM JSON saved → {outPath}");
+        try
+        {
+            var (ast, symbols, checker, linter) = RunPasses(source);
+            PrintDiagnostics(checker, linter);
+            var outPath = Path.ChangeExtension(resolved, ".json");
+            File.WriteAllText(outPath, new ArmGenerator().Generate(ast, symbols));
+            Console.WriteLine();
+            ConsoleUI.Success($"✓  ARM JSON saved → {outPath}");
+        }
+        catch (LexerException) { }
     }
 
     public void Check(string filePath)
@@ -33,14 +36,17 @@ public class PipelineRunner
         ConsoleUI.Banner($"Checking: {Path.GetFileName(resolved)}");
         Console.WriteLine();
 
-        var (_, _, checker, linter) = RunPasses(source, armGen: false, explainer: false);
-        PrintDiagnostics(checker, linter);
-
-        Console.WriteLine();
-        if (checker.Errors.Count == 0 && linter.Issues.All(i => i.Severity != DiagnosticSeverity.Error))
-            ConsoleUI.Success("✓  No blocking errors found.");
-        else
-            ConsoleUI.Error($"✗  {checker.Errors.Count + linter.Issues.Count(i => i.Severity == DiagnosticSeverity.Error)} error(s) must be fixed before deployment.");
+        try
+        {
+            var (_, _, checker, linter) = RunPasses(source, armGen: false, explainer: false);
+            PrintDiagnostics(checker, linter);
+            Console.WriteLine();
+            if (checker.Errors.Count == 0 && linter.Issues.All(i => i.Severity != DiagnosticSeverity.Error))
+                ConsoleUI.Success("✓  No blocking errors found.");
+            else
+                ConsoleUI.Error($"✗  {checker.Errors.Count + linter.Issues.Count(i => i.Severity == DiagnosticSeverity.Error)} error(s) must be fixed before deployment.");
+        }
+        catch (LexerException) { }
     }
 
     public void Explain(string filePath)
@@ -50,11 +56,18 @@ public class PipelineRunner
         ConsoleUI.Banner($"Explaining: {Path.GetFileName(resolved)}");
         Console.WriteLine();
 
-        var tokens  = new BicepLexer(source).Tokenize();
-        var ast     = new BicepParser(tokens).ParseCompilationUnit();
-        var symbols = new SymbolResolver().Resolve(ast);
-
-        new BicepExplainer(symbols).Explain(ast);
+        try
+        {
+            var tokens  = new BicepLexer(source).Tokenize();
+            var ast     = new BicepParser(tokens).ParseCompilationUnit();
+            var symbols = new SymbolResolver().Resolve(ast);
+            new BicepExplainer(symbols).Explain(ast);
+        }
+        catch (LexerException ex)
+        {
+            ConsoleUI.Section("SYNTAX ERROR");
+            ConsoleUI.Error(ex.Message);
+        }
     }
 
     private (CompilationUnitSyntax ast, SymbolTable symbols, TypeChecker checker, SecurityLinter linter)
@@ -62,7 +75,18 @@ public class PipelineRunner
     {
         var sw = Stopwatch.StartNew();
 
-        var tokens = new BicepLexer(source).Tokenize();
+        List<BicepTooling.Lexer.Token> tokens;
+        try
+        {
+            tokens = new BicepLexer(source).Tokenize();
+        }
+        catch (LexerException ex)
+        {
+            ConsoleUI.PassFail("Lexer", $"syntax error  ({Elapsed(sw)})");
+            ConsoleUI.Section("SYNTAX ERROR");
+            ConsoleUI.Error(ex.Message);
+            throw;
+        }
         ConsoleUI.PassOk("Lexer",     $"{tokens.Count} tokens  ({Elapsed(sw)})");
 
         var ast = new BicepParser(tokens).ParseCompilationUnit();

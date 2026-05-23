@@ -42,6 +42,7 @@ public class Lexer
         if (c == '/' && Peek() == '/') return ReadLineComment();
         if (c == '/' && Peek() == '*') return ReadBlockComment();
         if (c == '\'') return ReadString();
+        if (c == '"')  return ReadDoubleQuoteString();
         if (char.IsDigit(c)) return ReadNumber();
         if (char.IsLetter(c) || c == '_') return ReadIdentifierOrKeyword();
         return c switch
@@ -108,6 +109,16 @@ public class Lexer
         if (!IsAtEnd()) Advance();
         return MakeToken(TokenKind.String);
     }
+    private Token ReadDoubleQuoteString()
+    {
+        while (!IsAtEnd() && Peek() != '"' && Peek() != '\n') Advance();
+        if (!IsAtEnd()) Advance();
+        string content = _source[(_start + 1)..(_pos - 1)];
+        throw new LexerException(
+            $"Bicep uses single quotes, not double quotes.\n" +
+            $"  Change: \"{content}\"\n" +
+            $"  To:     '{content}'");
+    }
     private Token ReadNumber()
     {
         while (!IsAtEnd() && char.IsDigit(Peek())) Advance();
@@ -118,6 +129,11 @@ public class Lexer
         while (!IsAtEnd() && (char.IsLetterOrDigit(Peek()) || Peek() == '_')) Advance();
         string text = _source[_start.._pos];
         if (Keywords.TryGetValue(text, out TokenKind kind)) return MakeToken(kind);
+        if (Keywords.ContainsKey(text.ToLower()))
+            throw new LexerException(
+                $"Bicep keywords must be lowercase.\n" +
+                $"  Change: {text}\n" +
+                $"  To:     {text.ToLower()}");
         return MakeToken(TokenKind.Identifier);
     }
     private char Peek() => IsAtEnd() ? '\0' : _source[_pos];
@@ -131,4 +147,9 @@ public class Lexer
     }
     private Token TwoChar(TokenKind kind) { Advance(); return MakeToken(kind); }
     private Token ThreeChar(TokenKind kind) { Advance(); Advance(); return MakeToken(kind); }
+}
+
+public sealed class LexerException : Exception
+{
+    public LexerException(string message) : base(message) { }
 }
