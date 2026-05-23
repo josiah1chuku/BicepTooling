@@ -101,3 +101,4 @@ C:\Users\chuku\BicepTooling\BicepTooling.Tests\obj\Debug\net10.0\refint\BicepToo
 C:\Users\chuku\BicepTooling\BicepTooling.Tests\obj\Debug\net10.0\BicepTooling.Tests.pdb
 C:\Users\chuku\BicepTooling\BicepTooling.Tests\obj\Debug\net10.0\BicepTooling.Tests.genruntimeconfig.cache
 C:\Users\chuku\BicepTooling\BicepTooling.Tests\obj\Debug\net10.0\ref\BicepTooling.Tests.dll
+C:\Users\chuku\BicepTooling\BicepTooling.Tests\obj\Debug\net10.0\BicepTooling.Tests.sourcelink.json
