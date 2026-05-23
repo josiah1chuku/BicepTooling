@@ -1,90 +1,95 @@
-using BicepTooling.Lexer;
-using BicepTooling.Parser;
-using BicepTooling.Semantic;
-using BicepTooling.CodeGen;
+using BicepTooling.CLI;
+using BicepTooling.Learning;
 
-string source = File.ReadAllText("Samples/hello.bicep");
+var command  = args.Length > 0 ? args[0].ToLower() : "";
+var argument = args.Length > 1 ? args[1] : "";
 
-// Pass 1
-var tokens = new Lexer(source).Tokenize();
-Console.WriteLine($"Pass 1: {tokens.Count} tokens");
-
-// Pass 2
-var ast = new Parser(tokens).ParseCompilationUnit();
-Console.WriteLine($"Pass 2: {ast.Statements.Count} declarations");
-
-// Pass 3
-var symbols = new SymbolResolver().Resolve(ast);
-Console.WriteLine($"Pass 3: {symbols.All.Count()} symbols");
-
-// Pass 4
-var checker = new TypeChecker(symbols);
-checker.Check(ast);
-Console.WriteLine($"Pass 4: {checker.Errors.Count} errors, " +
-                  $"{checker.Warnings.Count} warnings, " +
-                  $"{checker.Infos.Count} info\n");
-
-// Pass 5
-var armJson = new ArmGenerator().Generate(ast, symbols);
-Console.WriteLine($"Pass 5: ARM JSON generated\n");
-
-// Print diagnostics
-if (checker.Errors.Count > 0)
+switch (command)
 {
-    Console.WriteLine("=== ERRORS ===\n");
-    foreach (var d in checker.Errors)
+    case "learn":
     {
-        Console.ForegroundColor = ConsoleColor.Red;
-        Console.WriteLine(d);
+        int n = int.TryParse(argument, out int ln) ? ln : 0;
+        new LessonRunner().Run(n);
+        break;
     }
-    Console.ResetColor();
+
+    case "lesson":
+    {
+        int n = int.TryParse(argument, out int ln) ? ln : 1;
+        new LessonRunner().Run(n);
+        break;
+    }
+
+    case "analyze":
+        new PipelineRunner().Analyze(argument is "" ? "Samples/hello.bicep" : argument);
+        break;
+
+    case "check":
+        new PipelineRunner().Check(argument is "" ? "Samples/hello.bicep" : argument);
+        break;
+
+    case "explain":
+        new PipelineRunner().Explain(argument is "" ? "Samples/hello.bicep" : argument);
+        break;
+
+    case "help":
+        ShowHelp();
+        break;
+
+    default:
+        ShowMenu();
+        break;
 }
 
-if (checker.Warnings.Count > 0)
+static void ShowMenu()
 {
-    Console.WriteLine("=== WARNINGS ===\n");
-    foreach (var d in checker.Warnings)
-    {
-        Console.ForegroundColor = ConsoleColor.DarkYellow;
-        Console.WriteLine(d);
-    }
-    Console.ResetColor();
+    ConsoleUI.Banner(
+        "BicepTooling",
+        "Azure Bicep analyzer, linter, and learning companion");
+
+    Console.WriteLine();
+    Console.WriteLine("  LEARN");
+    ConsoleUI.Tip("    dotnet run -- learn           Resume from your last lesson");
+    ConsoleUI.Tip("    dotnet run -- learn 3         Jump to lesson 3");
+    Console.WriteLine();
+    Console.WriteLine("  ANALYZE");
+    ConsoleUI.Tip("    dotnet run -- analyze <file>  Full pipeline: lex → parse → check → ARM");
+    ConsoleUI.Tip("    dotnet run -- check   <file>  Type-check and security scan only");
+    ConsoleUI.Tip("    dotnet run -- explain <file>  Plain-English explanation of every line");
+    Console.WriteLine();
+    Console.WriteLine("  OTHER");
+    ConsoleUI.Tip("    dotnet run -- help            Show this menu");
+    Console.WriteLine();
+
+    new ProgressTracker().PrintSummary();
 }
 
-if (checker.Infos.Count > 0)
+static void ShowHelp()
 {
-    Console.WriteLine("=== INFO ===\n");
-    foreach (var d in checker.Infos)
+    ShowMenu();
+    Console.WriteLine();
+    Console.WriteLine("  LESSONS");
+    string[] titles =
+    [
+        "Parameters (param)",
+        "Variables (var)",
+        "Your first resource declaration",
+        "Resource properties and body blocks",
+        "Outputs and dot property access",
+        "String interpolation ${}",
+        "Referencing other resources",
+        "Modules and file splitting",
+        "Conditionals (if) and loops (for)",
+        "Security best practices",
+    ];
+    var tracker = new ProgressTracker();
+    for (int i = 0; i < titles.Length; i++)
     {
-        Console.ForegroundColor = ConsoleColor.Cyan;
-        Console.WriteLine(d);
+        var done = tracker.IsCompleted(i + 1) ? "✓" : "·";
+        Console.ForegroundColor = tracker.IsCompleted(i + 1)
+            ? ConsoleColor.Green : ConsoleColor.DarkGray;
+        Console.WriteLine($"    {done} {i + 1,2}. {titles[i]}");
+        Console.ResetColor();
     }
-    Console.ResetColor();
+    Console.WriteLine();
 }
-
-if (checker.Diagnostics.Count == 0)
-    Console.WriteLine("No issues found!");
-
-// Pass 7 - Security Linter
-var linter = new BicepTooling.Semantic.SecurityLinter();
-linter.Lint(ast);
-Console.WriteLine($"Pass 7: {linter.Issues.Count} security issues\n");
-
-if (linter.Issues.Count > 0)
-{
-    Console.WriteLine("=== SECURITY ISSUES ===\n");
-    foreach (var issue in linter.Issues)
-    {
-        Console.ForegroundColor = issue.Severity == BicepTooling.Semantic.DiagnosticSeverity.Error
-            ? ConsoleColor.Red : ConsoleColor.DarkYellow;
-        Console.WriteLine(issue);
-    }
-    Console.ResetColor();
-}
-
-// Pass 6 - Explainer
-var explainer = new BicepTooling.Semantic.BicepExplainer(symbols);
-explainer.Explain(ast);
-
-File.WriteAllText("Samples/azuredeploy.json", armJson);
-Console.WriteLine("\nSaved to Samples/azuredeploy.json");
