@@ -76,6 +76,12 @@ public sealed class OutputDeclarationSyntax : StatementSyntax
     }
 }
 
+public sealed class FunctionCallExpressionSyntax : ExpressionSyntax
+{
+    public string Name { get; }
+    public FunctionCallExpressionSyntax(string name) { Name = name; }
+}
+
 public sealed class IdentifierExpressionSyntax : ExpressionSyntax
 {
     public string Name { get; }

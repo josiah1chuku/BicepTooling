@@ -109,7 +109,17 @@ public sealed class Parser
         if (Current.Kind == TokenKind.LeftBrace) return ParseObjectExpression();
         if (Current.Kind == TokenKind.Identifier)
         {
-            ExpressionSyntax expr = new IdentifierExpressionSyntax(Consume().Text);
+            var name = Consume().Text;
+            ExpressionSyntax expr;
+            if (Current.Kind == TokenKind.LeftParen)
+            {
+                SkipParentheses();
+                expr = new FunctionCallExpressionSyntax(name);
+            }
+            else
+            {
+                expr = new IdentifierExpressionSyntax(name);
+            }
             while (Current.Kind == TokenKind.Dot)
             {
                 Consume();
@@ -152,6 +162,18 @@ public sealed class Parser
         }
         Eat(TokenKind.RightBracket);
         return new ArrayExpressionSyntax(items);
+    }
+
+    private void SkipParentheses()
+    {
+        Eat(TokenKind.LeftParen);
+        int depth = 1;
+        while (depth > 0 && Current.Kind != TokenKind.EndOfFile)
+        {
+            if (Current.Kind == TokenKind.LeftParen)  depth++;
+            if (Current.Kind == TokenKind.RightParen) depth--;
+            Consume();
+        }
     }
 
     private string ParseIdentifier() => Eat(TokenKind.Identifier).Text;
