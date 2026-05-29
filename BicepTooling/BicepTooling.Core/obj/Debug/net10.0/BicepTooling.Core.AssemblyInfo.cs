@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("BicepTooling.Core")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+b554ada3ff2203f48af5afe9f8a528e72d2f0be8")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+4accfb506b1323a4a9be079cccbb1f8541130ec9")]
 [assembly: System.Reflection.AssemblyProductAttribute("BicepTooling.Core")]
 [assembly: System.Reflection.AssemblyTitleAttribute("BicepTooling.Core")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

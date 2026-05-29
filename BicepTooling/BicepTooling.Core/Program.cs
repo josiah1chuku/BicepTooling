@@ -32,6 +32,15 @@ switch (command)
         new PipelineRunner().Explain(argument is "" ? "Samples/hello.bicep" : argument);
         break;
 
+    case "eval":
+        new PipelineRunner().Evaluate(
+            argument is "" ? "Samples/eval" : argument);
+        break;
+
+    case "download":
+        await Downloader.FetchAsync(argument is "" ? "Samples/eval" : argument);
+        break;
+
     case "help":
         ShowHelp();
         break;

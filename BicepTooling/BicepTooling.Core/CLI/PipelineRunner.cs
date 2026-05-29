@@ -119,6 +119,8 @@ public class PipelineRunner
         return (ast, symbols, checker, linter);
     }
 
+    public void Evaluate(string directory) => new EvaluationRunner().Run(directory);
+
     private static void PrintDiagnostics(TypeChecker checker, SecurityLinter linter)
     {
         if (checker.Errors.Any())
