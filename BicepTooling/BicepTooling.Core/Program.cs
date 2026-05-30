@@ -37,6 +37,14 @@ switch (command)
             argument is "" ? "Samples/eval" : argument);
         break;
 
+    case "export":
+    {
+        var dir = argument is "" ? "Samples/ml_data" : argument;
+        var csv = args.Length > 2 ? args[2] : Path.Combine(dir, "labels.csv");
+        new LabelExporter().Export(dir, csv);
+        break;
+    }
+
     case "download":
         await Downloader.FetchAsync(argument is "" ? "Samples/eval" : argument);
         break;

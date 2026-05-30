@@ -57,7 +57,7 @@ public static class Downloader
         var mainFiles  = allPaths.Where(p => Path.GetFileName(p) == "main.bicep").ToList();
         var otherFiles = allPaths.Where(p => Path.GetFileName(p) != "main.bicep").ToList();
 
-        var selected = mainFiles.Concat(otherFiles).Take(50).ToList();
+        var selected = mainFiles.Concat(otherFiles).Take(500).ToList();
 
         ConsoleUI.PassOk("Tree",
             $"{allPaths.Count} .bicep files found  →  downloading {selected.Count}" +

@@ -17,13 +17,20 @@ public sealed class Parser
         var statements = new List<StatementSyntax>();
         while (Current.Kind != TokenKind.EndOfFile)
         {
-            if (Current.Kind == TokenKind.NewLine ||
-                Current.Kind == TokenKind.Comment ||
+            if (Current.Kind == TokenKind.NewLine  ||
+                Current.Kind == TokenKind.Comment  ||
                 Current.Kind == TokenKind.BlockComment)
+            { Consume(); continue; }
+
+            // Skip @decorator lines: @description('...') @allowed([...]) etc.
+            if (Current.Kind == TokenKind.At)
             {
                 Consume();
+                if (Current.Kind == TokenKind.Identifier) Consume();
+                if (Current.Kind == TokenKind.LeftParen)  SkipParentheses();
                 continue;
             }
+
             var stmt = ParseStatement();
             if (stmt != null)
                 statements.Add(stmt);
@@ -79,7 +86,13 @@ public sealed class Parser
         Consume();
         var name = ParseIdentifier();
         var type = ParseExpression();
+        if (Current.Kind == TokenKind.Existing) Consume(); // resource x '...' existing = {}
         Eat(TokenKind.Assign);
+        if (Current.Kind == TokenKind.If)       // resource x = if (cond) { ... }
+        {
+            Consume();
+            if (Current.Kind == TokenKind.LeftParen) SkipParentheses();
+        }
         var body = ParseExpression();
         if (Current.Kind == TokenKind.NewLine) Consume();
         return new ResourceDeclarationSyntax(name, type, body);
@@ -98,15 +111,49 @@ public sealed class Parser
 
     private ExpressionSyntax ParseExpression()
     {
+        var expr = ParsePrimary();
+
+        // Ternary: expr ? thenBranch : elseBranch
+        if (Current.Kind == TokenKind.Question)
+        {
+            Consume();
+            var whenTrue  = ParseExpression();
+            Eat(TokenKind.Colon);
+            var whenFalse = ParseExpression();
+            return new TernaryExpressionSyntax(expr, whenTrue, whenFalse);
+        }
+
+        return expr;
+    }
+
+    private ExpressionSyntax ParsePrimary()
+    {
         if (Current.Kind == TokenKind.String)
             return new StringLiteralExpressionSyntax(Consume().Text);
         if (Current.Kind == TokenKind.Integer)
             return new IntegerLiteralExpressionSyntax(Consume().Text);
-        if (Current.Kind == TokenKind.True) { Consume(); return new BooleanLiteralExpressionSyntax(true); }
+        if (Current.Kind == TokenKind.True)  { Consume(); return new BooleanLiteralExpressionSyntax(true); }
         if (Current.Kind == TokenKind.False) { Consume(); return new BooleanLiteralExpressionSyntax(false); }
-        if (Current.Kind == TokenKind.Null) { Consume(); return new NullLiteralExpressionSyntax(); }
+        if (Current.Kind == TokenKind.Null)  { Consume(); return new NullLiteralExpressionSyntax(); }
         if (Current.Kind == TokenKind.LeftBracket) return ParseArrayExpression();
-        if (Current.Kind == TokenKind.LeftBrace) return ParseObjectExpression();
+        if (Current.Kind == TokenKind.LeftBrace)   return ParseObjectExpression();
+
+        // Parenthesised expression — unwrap it
+        if (Current.Kind == TokenKind.LeftParen)
+        {
+            Consume();
+            var inner = ParseExpression();
+            if (Current.Kind == TokenKind.RightParen) Consume();
+            return inner;
+        }
+
+        // Unary not: !expr
+        if (Current.Kind == TokenKind.Not)
+        {
+            Consume();
+            return ParsePrimary();
+        }
+
         if (Current.Kind == TokenKind.Identifier)
         {
             var name = Consume().Text;
@@ -126,8 +173,18 @@ public sealed class Parser
                 var member = ParseIdentifier();
                 expr = new MemberAccessExpressionSyntax(expr, member);
             }
+            // Handle index access: expr[index]
+            while (Current.Kind == TokenKind.LeftBracket)
+            {
+                Consume();
+                while (Current.Kind != TokenKind.RightBracket &&
+                       Current.Kind != TokenKind.EndOfFile)
+                    Consume();
+                if (Current.Kind == TokenKind.RightBracket) Consume();
+            }
             return expr;
         }
+
         Consume();
         return new IdentifierExpressionSyntax("<unknown>");
     }
@@ -138,10 +195,32 @@ public sealed class Parser
         var properties = new List<ObjectPropertySyntax>();
         while (Current.Kind != TokenKind.RightBrace && Current.Kind != TokenKind.EndOfFile)
         {
-            if (Current.Kind == TokenKind.NewLine || Current.Kind == TokenKind.Comment)
+            if (Current.Kind == TokenKind.NewLine ||
+                Current.Kind == TokenKind.Comment ||
+                Current.Kind == TokenKind.BlockComment)
             { Consume(); continue; }
-            var name = ParseIdentifier();
-            Eat(TokenKind.Colon);
+
+            // Spread operator: ...expr
+            if (Current.Kind == TokenKind.Ellipsis)
+            {
+                Consume();
+                ParseExpression();
+                if (Current.Kind == TokenKind.Comma) Consume();
+                continue;
+            }
+
+            // Property name: identifier or quoted string
+            string name;
+            if (Current.Kind == TokenKind.String)
+                name = Consume().Text.Trim('\'');
+            else if (Current.Kind == TokenKind.Identifier)
+                name = Consume().Text;
+            else
+            { Consume(); continue; } // skip unrecognised token
+
+            if (Current.Kind != TokenKind.Colon) continue;
+            Consume(); // :
+
             var value = ParseExpression();
             properties.Add(new ObjectPropertySyntax(name, value));
             if (Current.Kind == TokenKind.Comma) Consume();
@@ -154,6 +233,22 @@ public sealed class Parser
     {
         Eat(TokenKind.LeftBracket);
         var items = new List<ExpressionSyntax>();
+
+        // For-loop comprehension: [for item in collection: expr]
+        // Skip the entire body and return an empty array node.
+        if (Current.Kind == TokenKind.For)
+        {
+            int depth = 1;
+            while (depth > 0 && Current.Kind != TokenKind.EndOfFile)
+            {
+                if (Current.Kind == TokenKind.LeftBracket)  depth++;
+                if (Current.Kind == TokenKind.RightBracket) depth--;
+                if (depth > 0) Consume();
+            }
+            Eat(TokenKind.RightBracket);
+            return new ArrayExpressionSyntax(items);
+        }
+
         while (Current.Kind != TokenKind.RightBracket && Current.Kind != TokenKind.EndOfFile)
         {
             if (Current.Kind == TokenKind.NewLine || Current.Kind == TokenKind.Comma)

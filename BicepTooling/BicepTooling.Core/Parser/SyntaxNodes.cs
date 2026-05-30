@@ -76,6 +76,15 @@ public sealed class OutputDeclarationSyntax : StatementSyntax
     }
 }
 
+public sealed class TernaryExpressionSyntax : ExpressionSyntax
+{
+    public ExpressionSyntax Condition { get; }
+    public ExpressionSyntax WhenTrue  { get; }
+    public ExpressionSyntax WhenFalse { get; }
+    public TernaryExpressionSyntax(ExpressionSyntax condition, ExpressionSyntax whenTrue, ExpressionSyntax whenFalse)
+    { Condition = condition; WhenTrue = whenTrue; WhenFalse = whenFalse; }
+}
+
 public sealed class FunctionCallExpressionSyntax : ExpressionSyntax
 {
     public string Name { get; }
