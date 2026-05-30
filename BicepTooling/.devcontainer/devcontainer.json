@@ -1,0 +1,21 @@
+{
+  "name": "BicepTooling Dev Environment",
+  "image": "mcr.microsoft.com/dotnet/sdk:10.0",
+  "features": {
+    "ghcr.io/devcontainers/features/git:1": {}
+  },
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-dotnettools.csharp"
+      ],
+      "settings": {
+        "terminal.integrated.defaultProfile.linux": "bash"
+      }
+    }
+  },
+  "postCreateCommand": "cd BicepTooling/BicepTooling.Core && dotnet build && echo '✅ BicepTooling is ready! Run: dotnet run -- learn'",
+  "remoteEnv": {
+    "DOTNET_CLI_TELEMETRY_OPTOUT": "1"
+  }
+}
