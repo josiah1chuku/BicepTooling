@@ -163,6 +163,67 @@ public static class Diagnostics
                       $"Or document that this param is intentionally required."
         );
 
+    // ── MODULE: FILE NOT FOUND ───────────────────────────────
+    public static DiagnosticMessage ModuleNotFound(
+        string moduleName, string path) =>
+        new(
+            severity: DiagnosticSeverity.Error,
+            code:     "BCP008",
+            what:     $"Module '{moduleName}' references file '{path}' which does not exist",
+            why:      "The Bicep file for this module cannot be found. " +
+                      "Deployment will fail at compile time.",
+            rule:     "Module paths must resolve to an existing .bicep file:\n" +
+                      "  module net './network.bicep' = {{ ... }}  ← file must exist",
+            fix:      $"Check the path '{path}' is correct relative to this file."
+        );
+
+    // ── MODULE: UNKNOWN PARAMETER ────────────────────────────
+    public static DiagnosticMessage UnknownModuleParam(
+        string moduleName, string paramName) =>
+        new(
+            severity: DiagnosticSeverity.Error,
+            code:     "BCP009",
+            what:     $"Module '{moduleName}' has no parameter '{paramName}'",
+            why:      $"You are passing '{paramName}' but the module does not declare it. " +
+                      "Deployment will fail because Bicep validates all param names.",
+            rule:     "Only pass parameters that the module declares:\n" +
+                      "  module net './network.bicep' = {{\n" +
+                      "    params: {{ location: 'eastus' }}  ← must match module's params\n" +
+                      "  }}",
+            fix:      $"Remove '{paramName}' from the params block, or add it to the module."
+        );
+
+    // ── MODULE: MISSING REQUIRED PARAMETER ───────────────────
+    public static DiagnosticMessage MissingModuleParam(
+        string moduleName, string paramName, string paramType) =>
+        new(
+            severity: DiagnosticSeverity.Error,
+            code:     "BCP010",
+            what:     $"Module '{moduleName}' requires parameter '{paramName}' ({paramType}) but it was not provided",
+            why:      $"'{paramName}' has no default value in the module, so it must be " +
+                      "supplied by every caller. Deployment will fail without it.",
+            rule:     "All required module parameters must be provided:\n" +
+                      "  module net './network.bicep' = {{\n" +
+                      $"    params: {{ {paramName}: <value> }}\n" +
+                      "  }}",
+            fix:      $"Add '{paramName}' to the params block:\n" +
+                      $"  {paramName}: <{paramType} value>"
+        );
+
+    // ── MODULE: PARAMETER TYPE MISMATCH ──────────────────────
+    public static DiagnosticMessage ModuleParamTypeMismatch(
+        string moduleName, string paramName, string expected, string actual) =>
+        new(
+            severity: DiagnosticSeverity.Warning,
+            code:     "BCP011",
+            what:     $"Module '{moduleName}' param '{paramName}' expects '{expected}' but received '{actual}'",
+            why:      $"The module declares '{paramName}' as '{expected}' but you are passing " +
+                      $"a '{actual}' value. This may fail at deployment.",
+            rule:     "Module param values must match the declared type:\n" +
+                      $"  param {paramName} {expected}  ← declared in module",
+            fix:      $"Change the value for '{paramName}' to a '{expected}' type."
+        );
+
     // ── CROSS-RESOURCE MISMATCH ──────────────────────────────
     public static DiagnosticMessage CrossResourceMismatch(
         string name, string actualKind, string member, string context) =>

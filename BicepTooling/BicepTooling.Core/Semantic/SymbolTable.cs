@@ -147,6 +147,15 @@ public class SymbolResolver
                     type: o.Type
                 ));
                 break;
+
+            // module network './network.bicep' = {}
+            case ModuleDeclarationSyntax m:
+                _table.Register(new Symbol(
+                    name: m.Name,
+                    kind: SymbolKind.Module,
+                    type: m.Path is StringLiteralExpressionSyntax ms ? ms.Value : "module"
+                ));
+                break;
         }
     }
 

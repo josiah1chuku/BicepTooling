@@ -46,8 +46,21 @@ public sealed class Parser
             TokenKind.Var      => ParseVariableDeclaration(),
             TokenKind.Resource => ParseResourceDeclaration(),
             TokenKind.Output   => ParseOutputDeclaration(),
+            TokenKind.Module   => ParseModuleDeclaration(),
             _                  => SkipUnknown()
         };
+    }
+
+    private ModuleDeclarationSyntax ParseModuleDeclaration()
+    {
+        var line = Current.Line; var col = Current.Column;
+        Consume(); // module
+        var name = ParseIdentifier();
+        var path = ParseExpression(); // './network.bicep'
+        Eat(TokenKind.Assign);
+        var body = ParseExpression();
+        if (Current.Kind == TokenKind.NewLine) Consume();
+        return new ModuleDeclarationSyntax(name, path, body) { Line = line, Column = col };
     }
 
     private StatementSyntax? SkipUnknown() { Consume(); return null; }

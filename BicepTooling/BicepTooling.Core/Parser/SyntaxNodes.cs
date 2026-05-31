@@ -78,6 +78,20 @@ public sealed class OutputDeclarationSyntax : StatementSyntax
     }
 }
 
+public sealed class ModuleDeclarationSyntax : StatementSyntax
+{
+    public string Name { get; }
+    public ExpressionSyntax Path { get; }
+    public ExpressionSyntax Body { get; }
+
+    public ModuleDeclarationSyntax(string name, ExpressionSyntax path, ExpressionSyntax body)
+    {
+        Name = name;
+        Path = path;
+        Body = body;
+    }
+}
+
 public sealed class TernaryExpressionSyntax : ExpressionSyntax
 {
     public ExpressionSyntax Condition { get; }

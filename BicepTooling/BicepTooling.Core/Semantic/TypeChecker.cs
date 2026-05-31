@@ -111,7 +111,7 @@ public class TypeChecker
                     m.Target is IdentifierExpressionSyntax root)
                 {
                     var sym = _symbols.Lookup(root.Name);
-                    if (sym != null && sym.Kind != SymbolKind.Resource)
+                    if (sym != null && sym.Kind != SymbolKind.Resource && sym.Kind != SymbolKind.Module)
                         Diagnostics.Add(DiagFactory.CrossResourceMismatch(
                             root.Name, sym.Kind.ToString(), m.Member, context)
                             .WithLocation(root.Line, root.Column));

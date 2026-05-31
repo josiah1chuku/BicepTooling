@@ -19,7 +19,8 @@ public class PipelineRunner
 
         try
         {
-            var (ast, symbols, checker, linter) = RunPasses(source);
+            var dir = Path.GetDirectoryName(resolved) ?? "";
+            var (ast, symbols, checker, linter) = RunPasses(source, baseDirectory: dir);
             PrintDiagnostics(checker, linter);
             var outPath = Path.ChangeExtension(resolved, ".json");
             File.WriteAllText(outPath, new ArmGenerator().Generate(ast, symbols));
@@ -38,7 +39,8 @@ public class PipelineRunner
 
         try
         {
-            var (_, _, checker, linter) = RunPasses(source, armGen: false, explainer: false);
+            var dir = Path.GetDirectoryName(resolved) ?? "";
+            var (_, _, checker, linter) = RunPasses(source, armGen: false, explainer: false, baseDirectory: dir);
             PrintDiagnostics(checker, linter);
             Console.WriteLine();
             if (checker.Errors.Count == 0 && linter.Issues.All(i => i.Severity != DiagnosticSeverity.Error))
@@ -71,7 +73,8 @@ public class PipelineRunner
     }
 
     private (CompilationUnitSyntax ast, SymbolTable symbols, TypeChecker checker, SecurityLinter linter)
-        RunPasses(string source, bool armGen = true, bool explainer = false)
+        RunPasses(string source, bool armGen = true, bool explainer = false,
+                  string baseDirectory = "")
     {
         var sw = Stopwatch.StartNew();
 
@@ -112,6 +115,19 @@ public class PipelineRunner
         var p6 = $"{linter.Issues.Count} issues  ({Elapsed(sw)})";
         if (linter.Issues.Count > 0) ConsoleUI.PassWarn("Security", p6);
         else                         ConsoleUI.PassOk  ("Security", p6);
+
+        if (!string.IsNullOrEmpty(baseDirectory))
+        {
+            var modules = new ModuleChecker(baseDirectory);
+            modules.Check(ast);
+            var p7 = $"{modules.Issues.Count} issues  ({Elapsed(sw)})";
+            if (modules.Issues.Count > 0)
+            {
+                ConsoleUI.PassWarn("Modules", p7);
+                foreach (var issue in modules.Issues) ConsoleUI.Error(issue.ToString());
+            }
+            else ConsoleUI.PassOk("Modules", p7);
+        }
 
         if (explainer)
             new BicepExplainer(symbols).Explain(ast);
