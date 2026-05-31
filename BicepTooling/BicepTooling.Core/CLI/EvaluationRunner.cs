@@ -26,6 +26,12 @@ public class EvaluationRunner
         new("SEC008", "VNet: no DDoS protection"),
         new("SEC009", "App Service: missing HTTPS-only"),
         new("SEC010", "Role Assignment: overly broad scope"),
+        new("SEC011", "Storage: missing sku property"),
+        new("SEC012", "Storage: missing kind property"),
+        new("SEC013", "Param: hardcoded secret default"),
+        new("SEC014", "Resource: deprecated API version"),
+        new("SEC015", "Resources: inconsistent locations"),
+        new("SEC016", "Resources: mixed location style"),
     ];
 
     public void Run(string directory)
