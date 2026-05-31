@@ -163,6 +163,24 @@ public static class Diagnostics
                       $"Or document that this param is intentionally required."
         );
 
+    // ── CROSS-RESOURCE MISMATCH ──────────────────────────────
+    public static DiagnosticMessage CrossResourceMismatch(
+        string name, string actualKind, string member, string context) =>
+        new(
+            severity: DiagnosticSeverity.Warning,
+            code:     "BCP007",
+            what:     $"'{name}.{member}' — '{name}' is a {actualKind.ToLower()}, not a resource",
+            why:      $"'.{member}' is a resource-only property. " +
+                      $"'{name}' is declared as a {actualKind.ToLower()} so it has no '.{member}'. " +
+                      $"In {context} this will fail at deployment.",
+            rule:     $"Only resource symbolic names have '.id' and '.outputs':\n" +
+                      $"  resource storageAccount '...' = {{}}   ← storageAccount.id  OK\n" +
+                      $"  var storageName = 'myStorage'         ← storageName.id     WRONG",
+            fix:      $"Either declare '{name}' as a resource:\n" +
+                      $"  resource {name} '<type>@<apiVersion>' = {{ ... }}\n" +
+                      $"Or replace '{name}.{member}' with the literal value you need."
+        );
+
     // ── OUTPUT TYPE MISMATCH ─────────────────────────────────
     public static DiagnosticMessage OutputTypeMismatch(
         string name, string declaredType, string actualType) =>

@@ -107,6 +107,15 @@ public class TypeChecker
                 }
                 break;
             case MemberAccessExpressionSyntax m:
+                if ((m.Member == "id" || m.Member == "outputs") &&
+                    m.Target is IdentifierExpressionSyntax root)
+                {
+                    var sym = _symbols.Lookup(root.Name);
+                    if (sym != null && sym.Kind != SymbolKind.Resource)
+                        Diagnostics.Add(DiagFactory.CrossResourceMismatch(
+                            root.Name, sym.Kind.ToString(), m.Member, context)
+                            .WithLocation(root.Line, root.Column));
+                }
                 CheckExpressionReferences(m.Target, context);
                 break;
             case ObjectExpressionSyntax obj:

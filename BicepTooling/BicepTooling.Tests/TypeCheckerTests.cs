@@ -126,6 +126,52 @@ public class TypeCheckerTests
         Assert.DoesNotContain("Did you mean", diag.What);
     }
 
+    // ── BCP007 CROSS-RESOURCE MISMATCH ───────────────────────
+
+    [Fact]
+    public void BCP007_VarUsedAsResource_DotId_ReportsWarning()
+    {
+        // 'subnetName' is a var — accessing .id on it should warn
+        var source = "var subnetName = 'mySubnet'\noutput id string = subnetName.id";
+        var checker = Check(source);
+        Assert.Contains(checker.Warnings, d => d.Code == "BCP007");
+    }
+
+    [Fact]
+    public void BCP007_ParamUsedAsResource_DotId_ReportsWarning()
+    {
+        var source = "param nicName string\noutput id string = nicName.id";
+        var checker = Check(source);
+        Assert.Contains(checker.Warnings, d => d.Code == "BCP007");
+    }
+
+    [Fact]
+    public void BCP007_ResourceUsedAsResource_DotId_NoWarning()
+    {
+        // 'storageAccount' is declared as a resource — .id is valid
+        var source = "resource storageAccount 'Microsoft.Storage/storageAccounts@2023-01-01' = { }\n" +
+                     "output id string = storageAccount.id";
+        var checker = Check(source);
+        Assert.DoesNotContain(checker.Warnings, d => d.Code == "BCP007");
+    }
+
+    [Fact]
+    public void BCP007_VarDotOutputs_ReportsWarning()
+    {
+        var source = "var myModule = 'something'\noutput x string = myModule.outputs";
+        var checker = Check(source);
+        Assert.Contains(checker.Warnings, d => d.Code == "BCP007");
+    }
+
+    [Fact]
+    public void BCP007_NonResourceProperty_NoWarning()
+    {
+        // Accessing a non-resource-specific member (e.g. .name) on a var is fine
+        var source = "var sku = 'Standard_LRS'\nvar x = sku.name";
+        var checker = Check(source);
+        Assert.DoesNotContain(checker.Warnings, d => d.Code == "BCP007");
+    }
+
     // ── LINE NUMBER LOCATION ─────────────────────────────────
 
     [Fact]
