@@ -2,6 +2,8 @@ namespace BicepTooling.Parser;
 
 public abstract class SyntaxNode
 {
+    public int Line   { get; set; }
+    public int Column { get; set; }
 }
 
 public sealed class CompilationUnitSyntax : SyntaxNode

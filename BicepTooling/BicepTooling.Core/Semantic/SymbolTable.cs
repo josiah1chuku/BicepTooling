@@ -97,20 +97,11 @@ public class SymbolResolver
     // Entry point — resolve all symbols in the file
     public SymbolTable Resolve(CompilationUnitSyntax ast)
     {
-        // Walk every declaration and register it
         foreach (var stmt in ast.Statements)
         {
             if (stmt == null) continue;
             RegisterDeclaration(stmt);
         }
-
-        // Second mini-pass: verify all references are defined
-        foreach (var stmt in ast.Statements)
-        {
-            if (stmt == null) continue;
-            CheckReferences(stmt);
-        }
-
         return _table;
     }
 
@@ -155,57 +146,6 @@ public class SymbolResolver
                     kind: SymbolKind.Output,
                     type: o.Type
                 ));
-                break;
-        }
-    }
-
-    // ── REFERENCE CHECK PASS ─────────────────────────────────
-    // Second pass: verify identifiers reference known symbols
-    private void CheckReferences(StatementSyntax stmt)
-    {
-        switch (stmt)
-        {
-            case VariableDeclarationSyntax v:
-                CheckExpression(v.Value);
-                break;
-            case OutputDeclarationSyntax o:
-                CheckExpression(o.Value);
-                break;
-            case ResourceDeclarationSyntax r:
-                CheckExpression(r.Body);
-                break;
-        }
-    }
-
-    private void CheckExpression(ExpressionSyntax? expr)
-    {
-        if (expr == null) return;
-
-        switch (expr)
-        {
-            // An identifier must refer to a known symbol
-            case IdentifierExpressionSyntax id:
-                if (!_table.Contains(id.Name))
-                    _table.Errors.Add(
-                        $"Undefined reference: '{id.Name}' is not declared.");
-                break;
-
-            // For member access (storage.id), check the root identifier
-            case MemberAccessExpressionSyntax m:
-                CheckExpression(m.Target);
-                break;
-
-            // For objects, check all property values
-            case ObjectExpressionSyntax obj:
-                foreach (var prop in obj.Properties)
-                    CheckExpression(prop.Value);
-                break;
-
-            // Literals are always fine — no references to check
-            case StringLiteralExpressionSyntax:
-            case IntegerLiteralExpressionSyntax:
-            case BooleanLiteralExpressionSyntax:
-            case NullLiteralExpressionSyntax:
                 break;
         }
     }

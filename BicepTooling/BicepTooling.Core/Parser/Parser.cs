@@ -54,6 +54,7 @@ public sealed class Parser
 
     private ParameterDeclarationSyntax ParseParameterDeclaration()
     {
+        var line = Current.Line; var col = Current.Column;
         Consume();
         var name = ParseIdentifier();
         var type = ParseType();
@@ -68,21 +69,23 @@ public sealed class Parser
             value = ParseExpression();
         }
         if (Current.Kind == TokenKind.NewLine) Consume();
-        return new ParameterDeclarationSyntax(name, type, value);
+        return new ParameterDeclarationSyntax(name, type, value) { Line = line, Column = col };
     }
 
     private VariableDeclarationSyntax ParseVariableDeclaration()
     {
+        var line = Current.Line; var col = Current.Column;
         Consume();
         var name = ParseIdentifier();
         Eat(TokenKind.Assign);
         var value = ParseExpression();
         if (Current.Kind == TokenKind.NewLine) Consume();
-        return new VariableDeclarationSyntax(name, value);
+        return new VariableDeclarationSyntax(name, value) { Line = line, Column = col };
     }
 
     private ResourceDeclarationSyntax ParseResourceDeclaration()
     {
+        var line = Current.Line; var col = Current.Column;
         Consume();
         var name = ParseIdentifier();
         var type = ParseExpression();
@@ -95,18 +98,19 @@ public sealed class Parser
         }
         var body = ParseExpression();
         if (Current.Kind == TokenKind.NewLine) Consume();
-        return new ResourceDeclarationSyntax(name, type, body);
+        return new ResourceDeclarationSyntax(name, type, body) { Line = line, Column = col };
     }
 
     private OutputDeclarationSyntax ParseOutputDeclaration()
     {
+        var line = Current.Line; var col = Current.Column;
         Consume();
         var name = ParseIdentifier();
         var type = ParseType();
         Eat(TokenKind.Assign);
         var value = ParseExpression();
         if (Current.Kind == TokenKind.NewLine) Consume();
-        return new OutputDeclarationSyntax(name, type, value);
+        return new OutputDeclarationSyntax(name, type, value) { Line = line, Column = col };
     }
 
     private ExpressionSyntax ParseExpression()
@@ -156,16 +160,17 @@ public sealed class Parser
 
         if (Current.Kind == TokenKind.Identifier)
         {
+            var idLine = Current.Line; var idCol = Current.Column;
             var name = Consume().Text;
             ExpressionSyntax expr;
             if (Current.Kind == TokenKind.LeftParen)
             {
                 SkipParentheses();
-                expr = new FunctionCallExpressionSyntax(name);
+                expr = new FunctionCallExpressionSyntax(name) { Line = idLine, Column = idCol };
             }
             else
             {
-                expr = new IdentifierExpressionSyntax(name);
+                expr = new IdentifierExpressionSyntax(name) { Line = idLine, Column = idCol };
             }
             while (Current.Kind == TokenKind.Dot)
             {

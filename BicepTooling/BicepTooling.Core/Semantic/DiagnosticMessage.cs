@@ -28,7 +28,7 @@ public class DiagnosticMessage
     public string             Why      { get; }  // why it matters
     public string             Fix      { get; }  // how to fix it
     public string             Rule     { get; }  // the Bicep rule
-    public string             Location { get; }  // where in the file
+    public string             Location { get; private set; }  // where in the file
 
     public DiagnosticMessage(
         DiagnosticSeverity severity,
@@ -46,6 +46,12 @@ public class DiagnosticMessage
         Fix      = fix;
         Rule     = rule;
         Location = location;
+    }
+
+    public DiagnosticMessage WithLocation(int line, int col)
+    {
+        Location = $"[Line {line}, Col {col}]";
+        return this;
     }
 
     public override string ToString()
