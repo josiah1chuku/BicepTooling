@@ -262,6 +262,167 @@ public class SecurityLinterTests
         Assert.DoesNotContain(Lint(source).Issues, d => d.Code == "SEC015");
     }
 
+    // ── SEC017 NSG UNRESTRICTED RDP ───────────────────────────
+
+    [Fact]
+    public void SEC017_OpenRdpRule_ReportsError()
+    {
+        var source =
+            "resource nsg 'Microsoft.Network/networkSecurityGroups@2023-04-01' = { " +
+            "properties: { securityRules: [ { name: 'rdp' properties: { " +
+            "direction: 'Inbound' access: 'Allow' " +
+            "sourceAddressPrefix: '*' destinationPortRange: '3389' } } ] } }";
+        Assert.Contains(Lint(source).Issues, d => d.Code == "SEC017");
+    }
+
+    [Fact]
+    public void SEC017_RestrictedRdpRule_NoError()
+    {
+        var source =
+            "resource nsg 'Microsoft.Network/networkSecurityGroups@2023-04-01' = { " +
+            "properties: { securityRules: [ { name: 'rdp' properties: { " +
+            "direction: 'Inbound' access: 'Allow' " +
+            "sourceAddressPrefix: '10.0.0.0/8' destinationPortRange: '3389' } } ] } }";
+        Assert.DoesNotContain(Lint(source).Issues, d => d.Code == "SEC017");
+    }
+
+    // ── SEC018 NSG UNRESTRICTED SSH ───────────────────────────
+
+    [Fact]
+    public void SEC018_OpenSshRule_ReportsError()
+    {
+        var source =
+            "resource nsg 'Microsoft.Network/networkSecurityGroups@2023-04-01' = { " +
+            "properties: { securityRules: [ { name: 'ssh' properties: { " +
+            "direction: 'Inbound' access: 'Allow' " +
+            "sourceAddressPrefix: 'Internet' destinationPortRange: '22' } } ] } }";
+        Assert.Contains(Lint(source).Issues, d => d.Code == "SEC018");
+    }
+
+    [Fact]
+    public void SEC018_OutboundSshRule_NoError()
+    {
+        var source =
+            "resource nsg 'Microsoft.Network/networkSecurityGroups@2023-04-01' = { " +
+            "properties: { securityRules: [ { name: 'ssh' properties: { " +
+            "direction: 'Outbound' access: 'Allow' " +
+            "sourceAddressPrefix: '*' destinationPortRange: '22' } } ] } }";
+        Assert.DoesNotContain(Lint(source).Issues, d => d.Code == "SEC018");
+    }
+
+    // ── SEC019 VM MISSING HOST ENCRYPTION ────────────────────
+
+    [Fact]
+    public void SEC019_VmMissingEncryptionAtHost_ReportsWarning()
+    {
+        var source =
+            "resource vm 'Microsoft.Compute/virtualMachines@2023-03-01' = { " +
+            "properties: { osProfile: { adminUsername: 'dispatchAdmin' } } }";
+        Assert.Contains(Lint(source).Issues, d => d.Code == "SEC019");
+    }
+
+    [Fact]
+    public void SEC019_VmHasEncryptionAtHost_NoWarning()
+    {
+        var source =
+            "resource vm 'Microsoft.Compute/virtualMachines@2023-03-01' = { " +
+            "properties: { " +
+            "securityProfile: { encryptionAtHost: true } " +
+            "osProfile: { adminUsername: 'dispatchAdmin' } } }";
+        Assert.DoesNotContain(Lint(source).Issues, d => d.Code == "SEC019");
+    }
+
+    // ── SEC020 VM WEAK ADMIN USERNAME ─────────────────────────
+
+    [Fact]
+    public void SEC020_WeakAdminUsername_ReportsError()
+    {
+        var source =
+            "resource vm 'Microsoft.Compute/virtualMachines@2023-03-01' = { " +
+            "properties: { osProfile: { adminUsername: 'admin' } } }";
+        Assert.Contains(Lint(source).Issues, d => d.Code == "SEC020");
+    }
+
+    [Fact]
+    public void SEC020_StrongAdminUsername_NoError()
+    {
+        var source =
+            "resource vm 'Microsoft.Compute/virtualMachines@2023-03-01' = { " +
+            "properties: { osProfile: { adminUsername: 'dispatchAdmin' } } }";
+        Assert.DoesNotContain(Lint(source).Issues, d => d.Code == "SEC020");
+    }
+
+    // ── SEC021 VM LINUX PASSWORD AUTH ─────────────────────────
+
+    [Fact]
+    public void SEC021_PasswordAuthNotDisabled_ReportsError()
+    {
+        var source =
+            "resource vm 'Microsoft.Compute/virtualMachines@2023-03-01' = { " +
+            "properties: { osProfile: { adminUsername: 'dispatchAdmin' " +
+            "linuxConfiguration: { disablePasswordAuthentication: false } } } }";
+        Assert.Contains(Lint(source).Issues, d => d.Code == "SEC021");
+    }
+
+    [Fact]
+    public void SEC021_PasswordAuthDisabled_NoError()
+    {
+        var source =
+            "resource vm 'Microsoft.Compute/virtualMachines@2023-03-01' = { " +
+            "properties: { osProfile: { adminUsername: 'dispatchAdmin' " +
+            "linuxConfiguration: { disablePasswordAuthentication: true } } } }";
+        Assert.DoesNotContain(Lint(source).Issues, d => d.Code == "SEC021");
+    }
+
+    // ── SEC022 SQL DATABASE BACKUP REDUNDANCY ─────────────────
+
+    [Fact]
+    public void SEC022_SqlDbMissingBackupRedundancy_ReportsWarning()
+    {
+        var source =
+            "resource db 'Microsoft.Sql/servers/databases@2023-02-01-preview' = { " +
+            "properties: { collation: 'SQL_Latin1_General_CP1_CI_AS' } }";
+        Assert.Contains(Lint(source).Issues, d => d.Code == "SEC022");
+    }
+
+    [Fact]
+    public void SEC022_SqlDbHasBackupRedundancy_NoWarning()
+    {
+        var source =
+            "resource db 'Microsoft.Sql/servers/databases@2023-02-01-preview' = { " +
+            "properties: { requestedBackupStorageRedundancy: 'Geo' } }";
+        Assert.DoesNotContain(Lint(source).Issues, d => d.Code == "SEC022");
+    }
+
+    // ── SEC023 POSTGRESQL SSL ENFORCEMENT ────────────────────
+
+    [Fact]
+    public void SEC023_PostgreSqlMissingSsl_ReportsError()
+    {
+        var source =
+            "resource pg 'Microsoft.DBforPostgreSQL/servers@2017-12-01' = { " +
+            "properties: { administratorLogin: 'pgAdmin' } }";
+        Assert.Contains(Lint(source).Issues, d => d.Code == "SEC023");
+    }
+
+    [Fact]
+    public void SEC023_PostgreSqlSslEnabled_NoError()
+    {
+        var source =
+            "resource pg 'Microsoft.DBforPostgreSQL/servers@2017-12-01' = { " +
+            "properties: { sslEnforcement: 'Enabled' } }";
+        Assert.DoesNotContain(Lint(source).Issues, d => d.Code == "SEC023");
+    }
+
+    [Fact]
+    public void SEC023_MySqlMissingSsl_ReportsError()
+    {
+        var source =
+            "resource db 'Microsoft.DBforMySQL/servers@2017-12-01' = { " +
+            "properties: { administratorLogin: 'mysqlAdmin' } }";
+        Assert.Contains(Lint(source).Issues, d => d.Code == "SEC023");
+    }
+
     // ── SEC016 MIXED LOCATIONS ────────────────────────────────
 
     [Fact]

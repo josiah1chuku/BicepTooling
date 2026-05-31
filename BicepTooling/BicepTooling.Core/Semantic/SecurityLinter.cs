@@ -29,6 +29,13 @@
 //   SEC014 — Resource: deprecated API version in use
 //   SEC015 — Resources: inconsistent hardcoded locations
 //   SEC016 — Resources: mixed hardcoded and param locations
+//   SEC017 — NSG: unrestricted inbound RDP (port 3389)
+//   SEC018 — NSG: unrestricted inbound SSH (port 22)
+//   SEC019 — VM: missing host-level disk encryption
+//   SEC020 — VM: weak or default admin username
+//   SEC021 — VM: Linux password authentication not disabled
+//   SEC022 — SQL Database: missing backup storage redundancy
+//   SEC023 — PostgreSQL/MySQL: SSL enforcement not enabled
 // ============================================================
 
 using BicepTooling.Parser;
@@ -62,6 +69,18 @@ public class SecurityLinter
     private static bool IsRoleAssignment(ResourceDeclarationSyntax r) =>
         GetTypeStr(r).Contains("roleassignments");
 
+    private static bool IsNetworkSecurityGroup(ResourceDeclarationSyntax r) =>
+        GetTypeStr(r).Contains("networksecuritygroups");
+
+    private static bool IsVirtualMachine(ResourceDeclarationSyntax r) =>
+        GetTypeStr(r).Contains("microsoft.compute/virtualmachines") &&
+        !GetTypeStr(r).Contains("/extensions") &&
+        !GetTypeStr(r).Contains("scalesets");
+
+    private static bool IsManagedDatabase(ResourceDeclarationSyntax r) =>
+        GetTypeStr(r).Contains("microsoft.dbforpostgresql") ||
+        GetTypeStr(r).Contains("microsoft.dbformysql");
+
     private static string GetTypeStr(ResourceDeclarationSyntax r) =>
         r.Type is StringLiteralExpressionSyntax s
             ? s.Value.Trim('\'').ToLower()
@@ -88,12 +107,17 @@ public class SecurityLinter
         LintLocation(r);
         LintApiVersion(r);
 
-        if (IsStorageAccount(r))  LintStorageAccount(r);
-        if (IsKeyVault(r))        LintKeyVault(r);
-        if (IsSqlServer(r))       LintSqlServer(r);
-        if (IsVirtualNetwork(r))  LintVirtualNetwork(r);
-        if (IsAppService(r))      LintAppService(r);
-        if (IsRoleAssignment(r))  LintRoleAssignment(r);
+        if (IsStorageAccount(r))      LintStorageAccount(r);
+        if (IsKeyVault(r))            LintKeyVault(r);
+        if (IsSqlServer(r) &&
+            !IsSqlDatabase(r))        LintSqlServer(r);
+        if (IsSqlDatabase(r))         LintSqlDatabase(r);
+        if (IsVirtualNetwork(r))      LintVirtualNetwork(r);
+        if (IsAppService(r))          LintAppService(r);
+        if (IsRoleAssignment(r))      LintRoleAssignment(r);
+        if (IsNetworkSecurityGroup(r)) LintNetworkSecurityGroup(r);
+        if (IsVirtualMachine(r))      LintVirtualMachine(r);
+        if (IsManagedDatabase(r))     LintManagedDatabase(r);
     }
 
     // ── SEC004: MISSING LOCATION ──────────────────────────────
@@ -658,6 +682,209 @@ public class SecurityLinter
                           "  param location string = resourceGroup().location"
             ));
     }
+
+    // ── SEC017-018: NETWORK SECURITY GROUP ──────────────────
+    private void LintNetworkSecurityGroup(ResourceDeclarationSyntax r)
+    {
+        if (r.Body is not ObjectExpressionSyntax body) return;
+        var propsNode = body.Properties.FirstOrDefault(p => p.Name.ToLower() == "properties");
+        if (propsNode?.Value is not ObjectExpressionSyntax props) return;
+
+        var rulesNode = props.Properties.FirstOrDefault(p => p.Name.ToLower() == "securityrules");
+        if (rulesNode?.Value is not ArrayExpressionSyntax rulesArray) return;
+
+        foreach (var item in rulesArray.Items)
+        {
+            if (item is not ObjectExpressionSyntax ruleObj) continue;
+            var rulePropNode = ruleObj.Properties
+                .FirstOrDefault(p => p.Name.ToLower() == "properties");
+            if (rulePropNode?.Value is not ObjectExpressionSyntax rp) continue;
+
+            var direction = GetStrProp(rp, "direction");
+            var access    = GetStrProp(rp, "access");
+            var source    = GetStrProp(rp, "sourceAddressPrefix");
+            var port      = GetStrProp(rp, "destinationPortRange");
+
+            bool inboundAllow = string.Equals(direction, "Inbound", StringComparison.OrdinalIgnoreCase)
+                             && string.Equals(access,    "Allow",   StringComparison.OrdinalIgnoreCase);
+            bool openSource   = source is "*" or "Internet" or "0.0.0.0/0";
+
+            if (!inboundAllow || !openSource) continue;
+
+            if (port == "3389")
+                Issues.Add(new DiagnosticMessage(
+                    severity: DiagnosticSeverity.Error,
+                    code:     "SEC017",
+                    what:     $"NSG '{r.Name}' allows unrestricted inbound RDP (port 3389)",
+                    why:      "Exposing RDP to the internet is one of the most common attack " +
+                              "vectors for ransomware and credential stuffing. Public safety " +
+                              "systems with open RDP have been targeted in ransomware attacks " +
+                              "that disrupted 911 dispatch. NIST SP 800-53 AC-17.",
+                    rule:     "Restrict RDP source to known management IPs:\n" +
+                              "  sourceAddressPrefix: '10.0.0.0/8'  (internal only)\n" +
+                              "  sourceAddressPrefix: '<mgmt-ip>'    (specific IP)",
+                    fix:      $"In '{r.Name}' restrict sourceAddressPrefix to a specific IP range."
+                ));
+
+            if (port == "22")
+                Issues.Add(new DiagnosticMessage(
+                    severity: DiagnosticSeverity.Error,
+                    code:     "SEC018",
+                    what:     $"NSG '{r.Name}' allows unrestricted inbound SSH (port 22)",
+                    why:      "Open SSH on public IP exposes public safety infrastructure " +
+                              "to automated brute-force attacks. CJIS 5.5.6 requires access " +
+                              "controls that prevent unauthorized remote access.",
+                    rule:     "Restrict SSH to known management IPs or use Azure Bastion:\n" +
+                              "  sourceAddressPrefix: '10.0.0.0/8'\n" +
+                              "  Or remove SSH rule and use Azure Bastion for remote access.",
+                    fix:      $"In '{r.Name}' restrict SSH sourceAddressPrefix or use Bastion."
+                ));
+        }
+    }
+
+    // ── SEC019-021: VIRTUAL MACHINE ──────────────────────────
+    private static readonly string[] WeakAdminNames =
+    {
+        "admin", "administrator", "root", "azureuser", "user", "guest", "test"
+    };
+
+    private void LintVirtualMachine(ResourceDeclarationSyntax r)
+    {
+        if (r.Body is not ObjectExpressionSyntax body) return;
+        var propsNode = body.Properties.FirstOrDefault(p => p.Name.ToLower() == "properties");
+        if (propsNode?.Value is not ObjectExpressionSyntax props) return;
+
+        // SEC019: missing encryption at host
+        var secProfile = props.Properties
+            .FirstOrDefault(p => p.Name.ToLower() == "securityprofile");
+        bool hasEncryption = secProfile?.Value is ObjectExpressionSyntax sp &&
+                             sp.Properties.Any(p => p.Name == "encryptionAtHost" &&
+                                 p.Value is BooleanLiteralExpressionSyntax b && b.Value);
+        if (!hasEncryption)
+            Issues.Add(new DiagnosticMessage(
+                severity: DiagnosticSeverity.Warning,
+                code:     "SEC019",
+                what:     $"VM '{r.Name}' is missing host-level disk encryption",
+                why:      "Without encryptionAtHost, VM temp disks and caches are not " +
+                          "encrypted. For public safety VMs holding CAD or RMS data, " +
+                          "CJIS 5.10.1.1 requires encryption of all data at rest.",
+                rule:     "Enable encryption at host (CJIS 5.10.1.1):\n" +
+                          "  securityProfile: {\n" +
+                          "    encryptionAtHost: true\n" +
+                          "  }",
+                fix:      $"Add to '{r.Name}' properties:\n" +
+                          "  securityProfile: { encryptionAtHost: true }"
+            ));
+
+        // SEC020 / SEC021: OS profile checks
+        var osProfile = props.Properties
+            .FirstOrDefault(p => p.Name.ToLower() == "osprofile");
+        if (osProfile?.Value is not ObjectExpressionSyntax osp) return;
+
+        // SEC020: weak admin username
+        var adminUser = GetStrProp(osp, "adminUsername");
+        if (adminUser != null &&
+            WeakAdminNames.Any(w => string.Equals(adminUser, w, StringComparison.OrdinalIgnoreCase)))
+            Issues.Add(new DiagnosticMessage(
+                severity: DiagnosticSeverity.Error,
+                code:     "SEC020",
+                what:     $"VM '{r.Name}' uses weak admin username '{adminUser}'",
+                why:      "Common admin usernames are the first credentials tried in " +
+                          "brute-force attacks. CJIS 5.6.2.1 requires non-default, " +
+                          "non-guessable account names on public safety systems.",
+                rule:     "Use a non-default admin username:\n" +
+                          "  adminUsername: 'dispatchAdmin'  correct\n" +
+                          "  adminUsername: 'admin'          WRONG",
+                fix:      $"Change adminUsername in '{r.Name}' to a non-default value."
+            ));
+
+        // SEC021: Linux password auth not disabled
+        var linuxConfig = osp.Properties
+            .FirstOrDefault(p => p.Name.ToLower() == "linuxconfiguration");
+        if (linuxConfig?.Value is ObjectExpressionSyntax lc)
+        {
+            var disablePwd = lc.Properties
+                .FirstOrDefault(p => p.Name == "disablePasswordAuthentication");
+            bool passwordDisabled = disablePwd?.Value is BooleanLiteralExpressionSyntax b && b.Value;
+            if (!passwordDisabled)
+                Issues.Add(new DiagnosticMessage(
+                    severity: DiagnosticSeverity.Error,
+                    code:     "SEC021",
+                    what:     $"VM '{r.Name}' Linux config does not disable password authentication",
+                    why:      "Password authentication on Linux VMs exposes public safety " +
+                              "infrastructure to brute-force attacks. SSH key authentication " +
+                              "is required by CJIS 5.6.2 for remote access to CJI systems.",
+                    rule:     "Disable password auth and use SSH keys (CJIS 5.6.2):\n" +
+                              "  linuxConfiguration: {\n" +
+                              "    disablePasswordAuthentication: true\n" +
+                              "    ssh: { publicKeys: [ ... ] }\n" +
+                              "  }",
+                    fix:      $"Set disablePasswordAuthentication: true in '{r.Name}'."
+                ));
+        }
+    }
+
+    // ── SEC022: SQL DATABASE ──────────────────────────────────
+    private void LintSqlDatabase(ResourceDeclarationSyntax r)
+    {
+        if (r.Body is not ObjectExpressionSyntax body) return;
+        var propsNode = body.Properties.FirstOrDefault(p => p.Name.ToLower() == "properties");
+        if (propsNode?.Value is not ObjectExpressionSyntax props) return;
+
+        bool hasBackupRedundancy = props.Properties
+            .Any(p => p.Name.ToLower() == "requestedbackupstorageredundancy");
+
+        if (!hasBackupRedundancy)
+            Issues.Add(new DiagnosticMessage(
+                severity: DiagnosticSeverity.Warning,
+                code:     "SEC022",
+                what:     $"SQL Database '{r.Name}' has no backup storage redundancy specified",
+                why:      "Without explicit backup redundancy, Azure may default to locally " +
+                          "redundant storage which does not survive a regional outage. " +
+                          "CJIS 5.12.1 requires backup and recovery for criminal justice data.",
+                rule:     "Set geo-redundant backup for CJIS compliance:\n" +
+                          "  properties: {\n" +
+                          "    requestedBackupStorageRedundancy: 'Geo'\n" +
+                          "  }",
+                fix:      $"Add to '{r.Name}' properties:\n" +
+                          "  requestedBackupStorageRedundancy: 'Geo'"
+            ));
+    }
+
+    // ── SEC023: POSTGRESQL / MYSQL ────────────────────────────
+    private void LintManagedDatabase(ResourceDeclarationSyntax r)
+    {
+        if (r.Body is not ObjectExpressionSyntax body) return;
+        var propsNode = body.Properties.FirstOrDefault(p => p.Name.ToLower() == "properties");
+        if (propsNode?.Value is not ObjectExpressionSyntax props) return;
+
+        var sslProp = props.Properties
+            .FirstOrDefault(p => p.Name.ToLower() == "sslenforcement");
+        bool sslEnabled = sslProp?.Value is StringLiteralExpressionSyntax s &&
+                          s.Value.Trim('\'').Equals("Enabled", StringComparison.OrdinalIgnoreCase);
+
+        if (!sslEnabled)
+            Issues.Add(new DiagnosticMessage(
+                severity: DiagnosticSeverity.Error,
+                code:     "SEC023",
+                what:     $"Database '{r.Name}' does not enforce SSL connections",
+                why:      "Without SSL enforcement, client applications can connect over " +
+                          "unencrypted channels. For managed databases holding public safety " +
+                          "records, FIPS 140-2 and CJIS 5.10 require encryption in transit.",
+                rule:     "Enable SSL enforcement on managed databases:\n" +
+                          "  properties: {\n" +
+                          "    sslEnforcement: 'Enabled'\n" +
+                          "  }",
+                fix:      $"Add to '{r.Name}' properties:\n" +
+                          "  sslEnforcement: 'Enabled'"
+            ));
+    }
+
+    // ── PROPERTY HELPER ──────────────────────────────────────
+    private static string? GetStrProp(ObjectExpressionSyntax obj, string name) =>
+        obj.Properties
+            .FirstOrDefault(p => string.Equals(p.Name, name, StringComparison.OrdinalIgnoreCase))
+            ?.Value is StringLiteralExpressionSyntax s ? s.Value.Trim('\'') : null;
 
     // ── SEC005: SENSITIVE OUTPUT ─────────────────────────────
     private void LintOutput(OutputDeclarationSyntax o)

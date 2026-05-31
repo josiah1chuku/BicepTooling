@@ -32,6 +32,13 @@ public class EvaluationRunner
         new("SEC014", "Resource: deprecated API version"),
         new("SEC015", "Resources: inconsistent locations"),
         new("SEC016", "Resources: mixed location style"),
+        new("SEC017", "NSG: unrestricted inbound RDP"),
+        new("SEC018", "NSG: unrestricted inbound SSH"),
+        new("SEC019", "VM: missing host encryption"),
+        new("SEC020", "VM: weak admin username"),
+        new("SEC021", "VM: Linux password auth enabled"),
+        new("SEC022", "SQL Database: no backup redundancy"),
+        new("SEC023", "PostgreSQL/MySQL: SSL not enforced"),
     ];
 
     public void Run(string directory)
