@@ -44,17 +44,17 @@ public class TypeChecker
 
     private void CheckParameter(ParameterDeclarationSyntax p)
     {
-        // Check type mismatch on default value
         if (p.Value != null)
         {
             var valueType = InferType(p.Value);
             if (!TypesCompatible(p.Type, valueType))
-                Diagnostics.Add(DiagFactory.TypeMismatch(p.Name, p.Type, valueType));
+                Diagnostics.Add(DiagFactory.TypeMismatch(p.Name, p.Type, valueType)
+                    .WithLocation(p.Line, p.Column));
         }
         else
         {
-            // Inform user this param is required
-            Diagnostics.Add(DiagFactory.RequiredParam(p.Name, p.Type));
+            Diagnostics.Add(DiagFactory.RequiredParam(p.Name, p.Type)
+                .WithLocation(p.Line, p.Column));
         }
     }
 
@@ -69,7 +69,8 @@ public class TypeChecker
             ? s.Value.Trim('\'') : "";
 
         if (!typeStr.Contains('@'))
-            Diagnostics.Add(DiagFactory.MissingApiVersion(r.Name, typeStr));
+            Diagnostics.Add(DiagFactory.MissingApiVersion(r.Name, typeStr)
+                .WithLocation(r.Line, r.Column));
 
         if (r.Body is ObjectExpressionSyntax body)
             foreach (var prop in body.Properties)
@@ -85,7 +86,8 @@ public class TypeChecker
             return;
         }
         if (valueType != "unknown" && !TypesCompatible(o.Type, valueType))
-            Diagnostics.Add(DiagFactory.OutputTypeMismatch(o.Name, o.Type, valueType));
+            Diagnostics.Add(DiagFactory.OutputTypeMismatch(o.Name, o.Type, valueType)
+                .WithLocation(o.Line, o.Column));
     }
 
     private void CheckExpressionReferences(ExpressionSyntax? expr, string context)
@@ -95,7 +97,14 @@ public class TypeChecker
         {
             case IdentifierExpressionSyntax id:
                 if (!_symbols.Contains(id.Name))
-                    Diagnostics.Add(DiagFactory.UndefinedReference(id.Name, context));
+                {
+                    // BCP002 — IMPROVED: fuzzy name suggestion
+                    var suggestion = SuggestClosestName(
+                        id.Name, _symbols.All.Select(s => s.Name));
+                    Diagnostics.Add(DiagFactory.UndefinedReference(
+                        id.Name + suggestion, context)
+                        .WithLocation(id.Line, id.Column));
+                }
                 break;
             case MemberAccessExpressionSyntax m:
                 CheckExpressionReferences(m.Target, context);
@@ -110,6 +119,40 @@ public class TypeChecker
                 break;
         }
     }
+
+    // ── FUZZY NAME SUGGESTION (Levenshtein distance) ─────────────────────────
+    // Inspired by Becker et al. (2019): enhanced error messages reduce
+    // time-to-fix by 25% in developer studies.
+    private static string SuggestClosestName(
+        string unknown, IEnumerable<string> declared)
+    {
+        var candidates = declared.ToList();
+        if (candidates.Count == 0) return "";
+
+        var best = candidates
+            .Select(d => (name: d, dist: Levenshtein(unknown, d)))
+            .OrderBy(x => x.dist)
+            .First();
+
+        return best.dist <= 3
+            ? $" (Did you mean '{best.name}'?)"
+            : "";
+    }
+
+    private static int Levenshtein(string a, string b)
+    {
+        int[,] dp = new int[a.Length + 1, b.Length + 1];
+        for (int i = 0; i <= a.Length; i++) dp[i, 0] = i;
+        for (int j = 0; j <= b.Length; j++) dp[0, j] = j;
+        for (int i = 1; i <= a.Length; i++)
+            for (int j = 1; j <= b.Length; j++)
+                dp[i, j] = a[i-1] == b[j-1]
+                    ? dp[i-1, j-1]
+                    : 1 + Math.Min(dp[i-1, j-1],
+                          Math.Min(dp[i-1, j], dp[i, j-1]));
+        return dp[a.Length, b.Length];
+    }
+    // ─────────────────────────────────────────────────────────────────────────
 
     private static string InferType(ExpressionSyntax? expr) => expr switch
     {

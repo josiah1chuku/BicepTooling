@@ -23,6 +23,12 @@
 //   SEC008 — Virtual Network: missing DDoS protection
 //   SEC009 — App Service: missing HTTPS-only flag
 //   SEC010 — Role Assignment: overly broad permissions
+//   SEC011 — Storage: missing sku property
+//   SEC012 — Storage: missing kind property
+//   SEC013 — Param: hardcoded secret as default value
+//   SEC014 — Resource: deprecated API version in use
+//   SEC015 — Resources: inconsistent hardcoded locations
+//   SEC016 — Resources: mixed hardcoded and param locations
 // ============================================================
 
 using BicepTooling.Parser;
@@ -68,21 +74,20 @@ public class SecurityLinter
         {
             if (stmt == null) continue;
 
-            if (stmt is ResourceDeclarationSyntax r)
-                LintResource(r);
-
-            if (stmt is OutputDeclarationSyntax o)
-                LintOutput(o);
+            if (stmt is ResourceDeclarationSyntax r)  LintResource(r);
+            if (stmt is OutputDeclarationSyntax    o)  LintOutput(o);
+            if (stmt is ParameterDeclarationSyntax p)  LintParameter(p);
         }
+
+        LintLocationConsistency(ast);
     }
 
     // ── RESOURCE ROUTER ──────────────────────────────────────
     private void LintResource(ResourceDeclarationSyntax r)
     {
-        // Always check for missing location (SEC004)
         LintLocation(r);
+        LintApiVersion(r);
 
-        // Route to type-specific linters
         if (IsStorageAccount(r))  LintStorageAccount(r);
         if (IsKeyVault(r))        LintKeyVault(r);
         if (IsSqlServer(r))       LintSqlServer(r);
@@ -197,6 +202,42 @@ public class SecurityLinter
                           "  }",
                 fix:      $"Change in '{r.Name}':\n" +
                           "  allowBlobPublicAccess: false"
+            ));
+
+        // SEC011: missing sku
+        bool hasSku = body.Properties.Any(p => p.Name.ToLower() == "sku");
+        if (!hasSku)
+            Issues.Add(new DiagnosticMessage(
+                severity: DiagnosticSeverity.Error,
+                code:     "SEC011",
+                what:     $"Storage '{r.Name}' is missing required 'sku' property",
+                why:      "Storage accounts without an explicit SKU will fail " +
+                          "deployment. Public safety systems require at minimum " +
+                          "Standard_LRS for geo-redundant resilience of 911 data.",
+                rule:     "All storage accounts require an explicit SKU:\n" +
+                          "  sku: {\n" +
+                          "    name: 'Standard_LRS'\n" +
+                          "  }",
+                fix:      $"Add to '{r.Name}':\n" +
+                          "  sku: {\n" +
+                          "    name: 'Standard_LRS'\n" +
+                          "  }"
+            ));
+
+        // SEC012: missing kind
+        bool hasKind = body.Properties.Any(p => p.Name.ToLower() == "kind");
+        if (!hasKind)
+            Issues.Add(new DiagnosticMessage(
+                severity: DiagnosticSeverity.Warning,
+                code:     "SEC012",
+                what:     $"Storage '{r.Name}' is missing 'kind' property",
+                why:      "Without explicit kind, Azure defaults may change between " +
+                          "API versions causing unexpected behavior in public safety " +
+                          "deployments. Always specify StorageV2 for modern features.",
+                rule:     "Always specify storage account kind explicitly:\n" +
+                          "  kind: 'StorageV2'",
+                fix:      $"Add to '{r.Name}':\n" +
+                          "  kind: 'StorageV2'"
             ));
     }
 
@@ -488,6 +529,134 @@ public class SecurityLinter
                               "data-plane role available for this resource type."
                 ));
         }
+    }
+
+    // ── SEC013: HARDCODED SECRETS ────────────────────────────
+    private static readonly string[] SecretParamNames =
+    {
+        "password", "secret", "key", "token", "credential",
+        "connectionstring", "apikey", "accesskey", "pwd"
+    };
+
+    private void LintParameter(ParameterDeclarationSyntax p)
+    {
+        if (p.Value is not StringLiteralExpressionSyntax s) return;
+
+        var val  = s.Value.Trim('\'');
+        var name = p.Name.ToLower();
+
+        bool nameIsSecret = SecretParamNames.Any(n => name.Contains(n));
+        bool looksLikeSecret =
+            val.Length >= 8 &&
+            val.Any(char.IsUpper) &&
+            val.Any(char.IsLower) &&
+            val.Any(char.IsDigit);
+
+        if (nameIsSecret && looksLikeSecret)
+            Issues.Add(new DiagnosticMessage(
+                severity: DiagnosticSeverity.Error,
+                code:     "SEC013",
+                what:     $"param '{p.Name}' has a hardcoded secret as default value",
+                why:      "Hardcoded passwords in Bicep templates are stored in " +
+                          "plain text in source control and Azure deployment history. " +
+                          "Anyone with repo or Reader access can read them. " +
+                          "NIST SP 800-53 SC-12 requires cryptographic key management.",
+                rule:     "Never hardcode secrets. Use @secure() and Key Vault:\n" +
+                          "  @secure()\n" +
+                          "  param adminPassword string",
+                fix:      $"Remove the default value from '{p.Name}' and mark it secure:\n" +
+                          $"  @secure()\n" +
+                          $"  param {p.Name} string"
+            ));
+    }
+
+    // ── SEC014: DEPRECATED API VERSION ──────────────────────
+    private static readonly Dictionary<string, string> LatestApiVersions =
+        new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["Microsoft.Storage/storageAccounts"]         = "2023-01-01",
+        ["Microsoft.KeyVault/vaults"]                 = "2023-02-01",
+        ["Microsoft.Sql/servers"]                     = "2023-02-01-preview",
+        ["Microsoft.Network/virtualNetworks"]         = "2023-04-01",
+        ["Microsoft.Web/sites"]                       = "2023-01-01",
+        ["Microsoft.Compute/virtualMachines"]         = "2023-03-01",
+        ["Microsoft.Authorization/roleAssignments"]   = "2022-04-01",
+    };
+
+    private void LintApiVersion(ResourceDeclarationSyntax r)
+    {
+        if (r.Type is not StringLiteralExpressionSyntax s) return;
+
+        var parts = s.Value.Trim('\'').Split('@');
+        if (parts.Length != 2) return;
+
+        var resType    = parts[0];
+        var apiVersion = parts[1];
+
+        if (!LatestApiVersions.TryGetValue(resType, out var latest)) return;
+
+        if (string.Compare(apiVersion, latest, StringComparison.OrdinalIgnoreCase) < 0)
+            Issues.Add(new DiagnosticMessage(
+                severity: DiagnosticSeverity.Warning,
+                code:     "SEC014",
+                what:     $"Resource '{r.Name}' uses API version '{apiVersion}' — '{latest}' is available",
+                why:      "Older API versions may lack security properties required " +
+                          "for CJIS compliance. Public safety systems should always " +
+                          "use current API versions to get the latest security controls.",
+                rule:     "Always use the latest stable API version.",
+                fix:      $"Update '{r.Name}' type string to:\n" +
+                          $"  '{resType}@{latest}'"
+            ));
+    }
+
+    // ── SEC015/016: LOCATION CONSISTENCY ────────────────────
+    private void LintLocationConsistency(CompilationUnitSyntax ast)
+    {
+        var resources = ast.Statements
+            .OfType<ResourceDeclarationSyntax>()
+            .Where(r => r.Body is ObjectExpressionSyntax)
+            .ToList();
+
+        var hardcoded = resources
+            .Select(r => new {
+                r.Name,
+                Loc = ((ObjectExpressionSyntax)r.Body).Properties
+                    .FirstOrDefault(p => p.Name.ToLower() == "location")
+                    ?.Value as StringLiteralExpressionSyntax
+            })
+            .Where(x => x.Loc != null)
+            .ToList();
+
+        var distinct = hardcoded
+            .Select(x => x.Loc!.Value.Trim('\''))
+            .Distinct()
+            .ToList();
+
+        if (distinct.Count > 1)
+            Issues.Add(new DiagnosticMessage(
+                severity: DiagnosticSeverity.Warning,
+                code:     "SEC015",
+                what:     "Resources use inconsistent hardcoded locations: " +
+                          string.Join(", ", distinct),
+                why:      "Mixed regions in a single template can violate CJIS data " +
+                          "residency requirements for public safety agencies with " +
+                          "state jurisdiction rules mandating specific regions.",
+                rule:     "FedRAMP: all resources must be in approved regions.",
+                fix:      "Use a single location param for all resources:\n" +
+                          "  param location string = resourceGroup().location"
+            ));
+
+        if (hardcoded.Count > 0 && hardcoded.Count < resources.Count)
+            Issues.Add(new DiagnosticMessage(
+                severity: DiagnosticSeverity.Warning,
+                code:     "SEC016",
+                what:     "Some resources have hardcoded locations, others use params — inconsistent pattern",
+                why:      "Mixing hardcoded and parameterized locations makes templates " +
+                          "harder to deploy across environments (dev/staging/prod).",
+                rule:     "Consistency rule: use param location for all resources.",
+                fix:      "Replace hardcoded location strings with:\n" +
+                          "  param location string = resourceGroup().location"
+            ));
     }
 
     // ── SEC005: SENSITIVE OUTPUT ─────────────────────────────
