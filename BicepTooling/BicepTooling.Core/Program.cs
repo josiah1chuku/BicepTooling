@@ -49,6 +49,11 @@ switch (command)
         await Downloader.FetchAsync(argument is "" ? "Samples/eval" : argument);
         break;
 
+    case "download-ext":
+        await MultiSourceDownloader.FetchAsync(
+            argument is "" ? "Samples/ml_data_ext" : argument);
+        break;
+
     case "help":
         ShowHelp();
         break;
