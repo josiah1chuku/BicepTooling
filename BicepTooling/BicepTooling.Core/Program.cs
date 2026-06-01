@@ -54,6 +54,11 @@ switch (command)
             argument is "" ? "Samples/ml_data_ext" : argument);
         break;
 
+    case "generate-synthetic":
+        SyntheticDataGenerator.Generate(
+            argument is "" ? "Samples/synthetic" : argument);
+        break;
+
     case "help":
         ShowHelp();
         break;
