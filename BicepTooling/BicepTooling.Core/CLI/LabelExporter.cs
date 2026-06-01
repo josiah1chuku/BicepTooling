@@ -1,6 +1,15 @@
-using BicepTooling.Semantic;
+// ============================================================
+// FILE: LabelExporter.cs
+// WHAT: Runs SecurityLinter on every .bicep file in a directory
+//       and exports a labels.csv for ML training.
+//
+// COLUMNS: filename, SEC001–SEC023 (23 binary label columns)
+// ============================================================
+
 using BicepLexer  = BicepTooling.Lexer.Lexer;
 using BicepParser = BicepTooling.Parser.Parser;
+using BicepTooling.Parser;
+using BicepTooling.Semantic;
 
 namespace BicepTooling.CLI;
 
@@ -8,123 +17,75 @@ public class LabelExporter
 {
     private static readonly string[] Rules =
         ["SEC001","SEC002","SEC003","SEC004","SEC005",
-         "SEC006","SEC007","SEC008","SEC009","SEC010"];
+         "SEC006","SEC007","SEC008","SEC009","SEC010",
+         "SEC011","SEC012","SEC013","SEC014","SEC015",
+         "SEC016","SEC017","SEC018","SEC019","SEC020",
+         "SEC021","SEC022","SEC023"];
 
-    public void Export(string directory, string outputCsv)
+    public void Export(string directory, string csvPath)
     {
-        var files = Directory.GetFiles(directory, "*.bicep", SearchOption.AllDirectories)
-                             .OrderBy(f => f)
-                             .ToArray();
+        var files = Directory.GetFiles(directory, "*.bicep",
+            SearchOption.AllDirectories)
+            .OrderBy(f => f)
+            .ToArray();
 
-        if (files.Length == 0)
+        Console.WriteLine($"\n  Exporting labels for {files.Length} files → {csvPath}\n");
+
+        var lines = new List<string>
         {
-            ConsoleUI.Error($"No .bicep files found in: {directory}");
-            return;
-        }
+            "filename," + string.Join(",", Rules)
+        };
 
-        ConsoleUI.Banner(
-            "Label Exporter — CodeBERT Training Data",
-            $"{files.Length} files  →  {outputCsv}");
-        Console.WriteLine();
-
-        int ok = 0, skipped = 0;
-
-        using (var writer = new StreamWriter(outputCsv))
+        int done = 0;
+        foreach (var file in files)
         {
-            writer.WriteLine("filename," + string.Join(",", Rules) + ",any_finding,source");
-
-            for (int i = 0; i < files.Length; i++)
+            try
             {
-                var file = files[i];
-                var name = Path.GetFileName(file);
-                Console.Write($"  [{i + 1,3}/{files.Length}] {name,-52}");
+                var src    = File.ReadAllText(file);
+                var tokens = new BicepLexer(src).Tokenize();
+                var ast    = new BicepParser(tokens).ParseCompilationUnit();
+                var linter = new SecurityLinter();
+                linter.Lint(ast);
 
-                try
-                {
-                    var source  = File.ReadAllText(file);
-                    var tokens  = new BicepLexer(source).Tokenize();
-                    var ast     = new BicepParser(tokens).ParseCompilationUnit();
-                    var linter  = new SecurityLinter();
-                    linter.Lint(ast);
+                var fired = linter.Issues
+                    .Select(i => i.Code)
+                    .ToHashSet();
 
-                    var fired      = linter.Issues.Select(issue => issue.Code).ToHashSet();
-                    var labels     = Rules.Select(r => fired.Contains(r) ? "1" : "0").ToArray();
-                    int anyFinding = fired.Count > 0 ? 1 : 0;
-
-                    var csvSource = "\"" + source.Replace("\"", "\"\"")
-                                                 .Replace("\r\n", "\\n")
-                                                 .Replace("\n", "\\n") + "\"";
-
-                    writer.WriteLine(
-                        $"{name}," + string.Join(",", labels) + $",{anyFinding}," + csvSource);
-
-                    Console.ForegroundColor = anyFinding == 1
-                        ? ConsoleColor.DarkYellow : ConsoleColor.Green;
-                    Console.WriteLine(anyFinding == 1
-                        ? $"{fired.Count} findings  [{string.Join(" ", fired)}]"
-                        : "clean");
-                    Console.ResetColor();
-                    ok++;
-                }
-                catch (Exception ex) when (
-                    ex is BicepTooling.Lexer.LexerException or
-                    BicepTooling.Parser.ParserException)
-                {
-                    writer.WriteLine($"{name}," + string.Join(",", Rules.Select(_ => "")) + ",,");
-                    Console.ForegroundColor = ConsoleColor.DarkGray;
-                    Console.WriteLine("skip");
-                    Console.ResetColor();
-                    skipped++;
-                }
+                var labels = Rules.Select(r => fired.Contains(r) ? "1" : "0");
+                var name   = Path.GetFileName(file);
+                lines.Add($"{name},{string.Join(",", labels)}");
+                done++;
             }
-        } // writer flushed and closed here — safe to read in PrintLabelStats
-
-        Console.WriteLine();
-        ConsoleUI.Success($"✓  CSV saved → {outputCsv}");
-        Console.WriteLine($"   Labeled rows : {ok}");
-        Console.WriteLine($"   Skipped rows : {skipped}  (blank labels — exclude from training)");
-        Console.WriteLine();
-
-        PrintLabelStats(outputCsv, ok);
-    }
-
-    private static void PrintLabelStats(string csvPath, int total)
-    {
-        if (total == 0) return;
-
-        ConsoleUI.Section("LABEL DISTRIBUTION");
-        Console.WriteLine($"  {"RULE",-8}  {"POSITIVES":>9}  {"NEGATIVES":>9}  {"% POS":>7}  IMBALANCE");
-        Console.WriteLine($"  {new string('─', 55)}");
-
-        var lines = File.ReadAllLines(csvPath).Skip(1)
-                        .Where(l => !l.EndsWith(",,"))  // skip skipped rows
-                        .ToArray();
-
-        for (int c = 0; c < Rules.Length; c++)
-        {
-            int pos = lines.Count(l =>
+            catch
             {
-                var cols = l.Split(',');
-                return cols.Length > c + 1 && cols[c + 1] == "1";
-            });
-            int neg  = total - pos;
-            double pct = total == 0 ? 0 : (double)pos / total * 100;
-            double ratio = pos == 0 ? double.MaxValue : (double)neg / pos;
-
-            Console.ForegroundColor = pct < 5  ? ConsoleColor.Red
-                                    : pct < 20 ? ConsoleColor.DarkYellow
-                                    :             ConsoleColor.Green;
-
-            Console.WriteLine(
-                $"  {Rules[c],-8}  {pos,9}  {neg,9}  {pct,6:F1}%  " +
-                (pos == 0 ? "no positives — rule may need more data"
-                           : $"1:{ratio:F0} pos:neg ratio"));
-            Console.ResetColor();
+                // skip unparseable files — don't include in CSV
+            }
         }
 
+        File.WriteAllLines(csvPath, lines);
+
+        Console.WriteLine($"  ✓ Exported {done} rows × {Rules.Length} label columns");
+        Console.WriteLine($"  ✓ Saved to: {csvPath}");
         Console.WriteLine();
-        ConsoleUI.Tip("  Rows with no labels (skipped files) are excluded from stats.");
-        ConsoleUI.Tip("  For CodeBERT training: drop blank-label rows, oversample minority classes.");
-        ConsoleUI.Tip("  Suggested split: 80% train / 10% val / 10% test, stratified per rule.");
+
+        // Print column prevalence summary
+        Console.WriteLine("  LABEL PREVALENCE");
+        Console.WriteLine("  ─────────────────────────────────────────");
+
+        var dataLines = lines.Skip(1).ToList();
+        for (int col = 0; col < Rules.Length; col++)
+        {
+            int positives = dataLines.Count(l =>
+            {
+                var parts = l.Split(',');
+                return parts.Length > col + 1 && parts[col + 1] == "1";
+            });
+            double pct = done > 0 ? (positives * 100.0 / done) : 0;
+            var bar = new string('█', (int)(pct / 5)) +
+                      new string('░', 20 - (int)(pct / 5));
+            Console.WriteLine(
+                $"  {Rules[col]}  {positives,4} / {done}  ({pct,5:F1}%)  {bar}");
+        }
+        Console.WriteLine();
     }
 }
