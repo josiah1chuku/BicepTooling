@@ -1,0 +1,37 @@
+name: Deploy Azure Bicep Infrastructure
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch: # Allows manual triggering from the GitHub UI
+
+permissions:
+  id-token: write # Required for requesting the JWT/OIDC token from Azure
+  contents: read  # Required to check out the Bicep code
+
+jobs:
+  validate-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+
+      # 1. Check out the source code from the repository
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      # 2. Log into Azure using your OIDC Secrets
+      - name: Azure Login via OIDC
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      # 3. Deploy the main.bicep template
+      - name: Deploy Bicep File
+        uses: azure/arm-deploy@v2
+        with:
+          scope: subscription
+          subscriptionId: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          region: centralindia # This is fine, or switch to eastus if preferred!
+          template: ./main.bicep
